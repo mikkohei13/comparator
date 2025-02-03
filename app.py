@@ -54,7 +54,12 @@ def home():
 
 @app.route('/get_pair')
 def get_pair():
-    """Get a random pair of images that haven't been compared yet.
+    """Get a pair of images for comparison using an active learning strategy.
+    
+    The strategy prioritizes:
+    1. Images with fewer comparisons to ensure balanced data
+    2. Close matches based on win/loss ratio to refine uncertain rankings
+    3. Falls back to random selection if no clear priorities
     
     Returns:
         JSON response with either:
@@ -67,40 +72,69 @@ def get_pair():
     if len(images) < 2:
         return jsonify({'error': 'Not enough images'}), 400
     
-    # Get all image IDs
+    # Get all image IDs and calculate total possible pairs
     image_ids = [img.id for img in images]
-    
-    # Calculate total possible pairs
     total_possible_pairs = len(image_ids) * (len(image_ids) - 1) // 2
     
-    # Get all existing comparisons
+    # Get existing comparisons
     existing_comparisons = set()
+    # Track win/loss counts for each image
+    win_counts = defaultdict(int)
+    loss_counts = defaultdict(int)
+    comparison_counts = defaultdict(int)
+    
     comparisons = Comparison.query.all()
     for comp in comparisons:
         pair = (min(comp.winner_id, comp.loser_id), max(comp.winner_id, comp.loser_id))
         existing_comparisons.add(pair)
+        win_counts[comp.winner_id] += 1
+        loss_counts[comp.loser_id] += 1
+        comparison_counts[comp.winner_id] += 1
+        comparison_counts[comp.loser_id] += 1
     
-    # If all possible pairs have been compared, return finished status
     if len(existing_comparisons) >= total_possible_pairs:
         return jsonify({'status': 'finished'})
     
-    # Try to find a pair that hasn't been compared yet
-    all_possible_pairs = [(i1, i2) for i1 in image_ids for i2 in image_ids if i1 < i2]
-    random.shuffle(all_possible_pairs)
+    # Calculate win ratio for each image
+    win_ratios = {}
+    for img_id in image_ids:
+        total = win_counts[img_id] + loss_counts[img_id]
+        if total > 0:
+            win_ratios[img_id] = win_counts[img_id] / total
+        else:
+            win_ratios[img_id] = 0.5  # Default for new images
     
-    for img1_id, img2_id in all_possible_pairs:
-        if (img1_id, img2_id) not in existing_comparisons:
-            # Found a pair that hasn't been compared
-            img1 = Image.query.get(img1_id)
-            img2 = Image.query.get(img2_id)
-            return jsonify({
-                'status': 'success',
-                'image1': {'id': img1.id, 'filename': img1.filename},
-                'image2': {'id': img2.id, 'filename': img2.filename}
-            })
+    # Get valid pairs and score them
+    valid_pairs = []
+    for i1 in image_ids:
+        for i2 in image_ids:
+            if i1 < i2 and (i1, i2) not in existing_comparisons:
+                # Score based on:
+                # 1. Prioritize images with fewer comparisons
+                comparison_priority = -max(comparison_counts[i1], comparison_counts[i2])
+                # 2. Prioritize close matches (similar win ratios)
+                ratio_difference = abs(win_ratios[i1] - win_ratios[i2])
+                
+                score = comparison_priority - ratio_difference
+                valid_pairs.append((score, i1, i2))
     
-    # This should never happen as we checked total pairs earlier
-    return jsonify({'error': 'No valid pairs available'}), 400
+    if not valid_pairs:
+        return jsonify({'error': 'No valid pairs available'}), 400
+    
+    # Sort by score and add some randomization to prevent getting stuck
+    valid_pairs.sort(reverse=True)  # Higher scores first
+    # Take top 20% of pairs and randomly select from them
+    top_pairs = valid_pairs[:max(1, len(valid_pairs) // 5)]
+    score, img1_id, img2_id = random.choice(top_pairs)
+    
+    img1 = Image.query.get(img1_id)
+    img2 = Image.query.get(img2_id)
+    
+    return jsonify({
+        'status': 'success',
+        'image1': {'id': img1.id, 'filename': img1.filename},
+        'image2': {'id': img2.id, 'filename': img2.filename}
+    })
 
 @app.route('/submit_comparison', methods=['POST'])
 def submit_comparison():
@@ -220,6 +254,22 @@ def export_comparisons():
         mimetype='text/csv',
         headers={'Content-Disposition': 'attachment; filename=comparisons.csv'}
     )
+
+@app.route('/reset_db', methods=['POST'])
+def reset_db():
+    """Reset the database by dropping all comparisons while keeping images.
+    
+    Returns:
+        JSON response indicating success status
+    """
+    try:
+        # Delete all comparisons
+        Comparison.query.delete()
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': 'Database reset successful'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 if __name__ == '__main__':
     init_db()
