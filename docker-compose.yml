@@ -1,0 +1,15 @@
+# Add a custom name for the project
+name: comparator
+
+services:
+  web:
+    container_name: comparator-web
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+    environment:
+      - FLASK_ENV=development
+      - FLASK_APP=app.py
+    command: python app.py 
