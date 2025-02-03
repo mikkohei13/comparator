@@ -24,10 +24,24 @@ for extra_dir in extra_dirs:
                 extra_files.append(filename)
 
 class Image(db.Model):
+    """Database model representing an image in the comparison system.
+    
+    Attributes:
+        id: Unique identifier for the image
+        filename: Name of the image file in the images directory
+    """
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255), nullable=False)
 
 class Comparison(db.Model):
+    """Database model representing a comparison between two images.
+    
+    Attributes:
+        id: Unique identifier for the comparison
+        winner_id: ID of the image that won the comparison
+        loser_id: ID of the image that lost the comparison
+        timestamp: When the comparison was made (UTC)
+    """
     id = db.Column(db.Integer, primary_key=True)
     winner_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
     loser_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
@@ -35,10 +49,19 @@ class Comparison(db.Model):
 
 @app.route('/')
 def home():
+    """Render the main page of the application."""
     return render_template('index.html')
 
 @app.route('/get_pair')
 def get_pair():
+    """Get a random pair of images that haven't been compared yet.
+    
+    Returns:
+        JSON response with either:
+        - Two images (id and filename) if a valid pair is found
+        - Finished status if all possible pairs have been compared
+        - Error message if there aren't enough images or no valid pairs
+    """
     # Get all images
     images = Image.query.all()
     if len(images) < 2:
@@ -81,6 +104,15 @@ def get_pair():
 
 @app.route('/submit_comparison', methods=['POST'])
 def submit_comparison():
+    """Submit a comparison between two images.
+    
+    Expects JSON data with:
+        winner_id: ID of the winning image
+        loser_id: ID of the losing image
+    
+    Returns:
+        JSON response indicating success status
+    """
     data = request.json
     winner_id = data.get('winner_id')
     loser_id = data.get('loser_id')
@@ -93,10 +125,23 @@ def submit_comparison():
 
 @app.route('/images/<path:filename>')
 def serve_image(filename):
+    """Serve an image file from the images directory.
+    
+    Args:
+        filename: Name of the image file to serve
+        
+    Returns:
+        The requested image file
+    """
     return send_from_directory('images', filename)
 
 @app.route('/rankings')
 def rankings():
+    """Generate a ranking page showing all images and their comparison counts.
+    
+    Returns:
+        Rendered rankings.html template with sorted image results
+    """
     # Get all images and their comparison counts
     images = Image.query.all()
     comparison_counts = defaultdict(int)
@@ -121,12 +166,22 @@ def rankings():
     return render_template('rankings.html', images=results)
 
 def init_db():
+    """Initialize the database by creating all defined tables."""
     with app.app_context():
         db.create_all()
 
 @app.route('/comparisons.csv')
 def export_comparisons():
-    """Export all comparisons as CSV file."""
+    """Export all comparisons as CSV file.
+    
+    Returns:
+        CSV file containing:
+        - Timestamp of comparison
+        - Winner image filename
+        - Loser image filename
+        
+    The CSV is returned as a downloadable file attachment.
+    """
     # Create a string buffer to write CSV data
     si = StringIO()
     writer = csv.writer(si)
