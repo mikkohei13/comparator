@@ -20,7 +20,10 @@
     <div class="container py-5">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h1>Image Comparison Rankings</h1>
-            <a href="/" class="btn btn-primary">Back to Comparison</a>
+            <div class="d-flex gap-2">
+                <button onclick="resetDatabase()" class="btn btn-danger">Reset Rankings</button>
+                <a href="/" class="btn btn-primary">Back to Comparison</a>
+            </div>
         </div>
 
         <div class="row">
@@ -45,5 +48,23 @@
             {% endfor %}
         </div>
     </div>
+
+    <script>
+    function resetDatabase() {
+        if (confirm('Are you sure you want to reset all rankings? This cannot be undone.')) {
+            fetch('/reset_db', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('Rankings reset successfully');
+                        window.location.reload();
+                    } else {
+                        alert('Error resetting rankings: ' + data.message);
+                    }
+                })
+                .catch(error => alert('Error: ' + error));
+        }
+    }
+    </script>
 </body>
 </html> 
