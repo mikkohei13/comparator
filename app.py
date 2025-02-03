@@ -33,55 +33,6 @@ class Comparison(db.Model):
     loser_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
-def calculate_ratings():
-    # Get all images and comparisons
-    images = Image.query.all()
-    comparisons = Comparison.query.all()
-    
-    # Initialize scores and comparison counts
-    scores = {img.id: 0.5 for img in images}  # Start at 0.5
-    comparison_counts = defaultdict(int)
-    
-    # Count comparisons per image
-    for comp in comparisons:
-        comparison_counts[comp.winner_id] += 1
-        comparison_counts[comp.loser_id] += 1
-    
-    # Calculate ratings using ELO-like system
-    k = 0.05  # Learning rate
-    
-    # Sort comparisons by timestamp to apply them in order
-    sorted_comparisons = sorted(comparisons, key=lambda x: x.timestamp)
-    
-    for comp in sorted_comparisons:
-        winner_score = scores[comp.winner_id]
-        loser_score = scores[comp.loser_id]
-        
-        # Calculate expected probability of winning
-        expected_winner = 1 / (1 + 10 ** ((loser_score - winner_score) / 0.1))
-        
-        # Update scores
-        scores[comp.winner_id] += k * (1 - expected_winner)
-        scores[comp.loser_id] += k * (0 - expected_winner)
-        
-        # Keep scores between 0 and 1
-        scores[comp.winner_id] = min(1, max(0, scores[comp.winner_id]))
-        scores[comp.loser_id] = min(1, max(0, scores[comp.loser_id]))
-    
-    # Create result objects with all needed information
-    results = []
-    for img in images:
-        results.append({
-            'id': img.id,
-            'filename': img.filename,
-            'quality_score': scores[img.id],
-            'comparisons_count': comparison_counts[img.id]
-        })
-    
-    # Sort by quality score
-    results.sort(key=lambda x: x['quality_score'], reverse=True)
-    return results
-
 @app.route('/')
 def home():
     return render_template('index.html')
@@ -146,43 +97,34 @@ def serve_image(filename):
 
 @app.route('/rankings')
 def rankings():
-    # Calculate current ratings based on all comparisons
-    ranked_images = calculate_ratings()
-    return render_template('rankings.html', images=ranked_images)
-
-def scan_for_new_images():
-    """Scan the images directory and add any new images to the database."""
-    new_images = []
-    for filename in os.listdir('images'):
-        if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
-            if not Image.query.filter_by(filename=filename).first():
-                image = Image(filename=filename)
-                db.session.add(image)
-                new_images.append(filename)
-    db.session.commit()
-    return new_images
-
-@app.route('/scan_images', methods=['POST'])
-def scan_images():
-    """Endpoint to trigger scanning for new images."""
-    new_images = scan_for_new_images()
-    return jsonify({
-        'status': 'success',
-        'new_images': new_images,
-        'count': len(new_images)
-    })
+    # Get all images and their comparison counts
+    images = Image.query.all()
+    comparison_counts = defaultdict(int)
+    
+    # Count wins and losses for each image
+    comparisons = Comparison.query.all()
+    for comp in comparisons:
+        comparison_counts[comp.winner_id] += 1
+        comparison_counts[comp.loser_id] += 1
+    
+    # Create result objects with comparison counts
+    results = []
+    for img in images:
+        results.append({
+            'id': img.id,
+            'filename': img.filename,
+            'comparisons_count': comparison_counts[img.id]
+        })
+    
+    # Sort by number of comparisons
+    results.sort(key=lambda x: x['comparisons_count'], reverse=True)
+    return render_template('rankings.html', images=results)
 
 def init_db():
     with app.app_context():
         db.create_all()
-        scan_for_new_images()
 
-@app.route('/export')
-def export_page():
-    """Show the export page with available export options."""
-    return render_template('export.html')
-
-@app.route('/export/comparisons.csv')
+@app.route('/comparisons.csv')
 def export_comparisons():
     """Export all comparisons as CSV file."""
     # Create a string buffer to write CSV data

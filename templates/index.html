@@ -47,15 +47,6 @@
             box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
             margin-top: 2rem;
         }
-        .scan-button {
-            margin-left: 1rem;
-        }
-        #scan-result {
-            display: none;
-            margin-top: 1rem;
-            padding: 1rem;
-            border-radius: 0.5rem;
-        }
         .alert {
             display: none;
             margin-top: 1rem;
@@ -70,15 +61,9 @@
             <p class="lead">Click on the image that you think has better quality</p>
             <div>
                 <a href="/rankings" class="btn btn-outline-primary">View Rankings</a>
-                <button onclick="scanForNewImages()" class="btn btn-outline-success scan-button">
-                    Scan for New Images
-                </button>
-                <a href="/export" class="btn btn-outline-info ms-2">
-                    Export Data
+                <a href="/comparisons.csv" class="btn btn-outline-info ms-2">
+                    Download Results (CSV)
                 </a>
-            </div>
-            <div id="scan-result" class="alert alert-success">
-                <span id="scan-message"></span>
             </div>
         </div>
 
@@ -183,45 +168,6 @@
 
         function skipComparison() {
             loadNewPair();
-        }
-
-        async function scanForNewImages() {
-            const scanButton = document.querySelector('.scan-button');
-            const scanResult = document.getElementById('scan-result');
-            const scanMessage = document.getElementById('scan-message');
-            
-            // Disable button during scan
-            scanButton.disabled = true;
-            scanButton.textContent = 'Scanning...';
-            
-            try {
-                const response = await fetch('/scan_images', {
-                    method: 'POST'
-                });
-                const data = await response.json();
-                
-                scanResult.style.display = 'block';
-                if (data.count > 0) {
-                    scanMessage.textContent = `Found ${data.count} new image${data.count === 1 ? '' : 's'}: ${data.new_images.join(', ')}`;
-                    // Reload pairs to include new images
-                    loadNewPair();
-                } else {
-                    scanMessage.textContent = 'No new images found.';
-                }
-                
-                // Hide the message after 5 seconds
-                setTimeout(() => {
-                    scanResult.style.display = 'none';
-                }, 5000);
-            } catch (error) {
-                console.error('Error scanning for images:', error);
-                scanResult.className = 'alert alert-danger';
-                scanMessage.textContent = 'Error scanning for images. Please try again.';
-            } finally {
-                // Re-enable button
-                scanButton.disabled = false;
-                scanButton.textContent = 'Scan for New Images';
-            }
         }
 
         // Load first pair when page loads
